@@ -1,3 +1,4 @@
+import "./services/firebase";
 import AppRouter from "./routes/AppRouter";
 
 function App() {
