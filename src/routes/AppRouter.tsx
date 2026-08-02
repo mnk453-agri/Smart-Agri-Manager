@@ -1,10 +1,15 @@
-import { Routes, Route } from "react-router";
+import { Route, Routes } from "react-router";
+import DashboardLayout from "../layouts/DashboardLayout";
 import HomePage from "../pages/HomePage";
 
-export default function AppRouter() {
+function AppRouter() {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      <Route element={<DashboardLayout />}>
+        <Route path="/" element={<HomePage />} />
+      </Route>
     </Routes>
   );
 }
+
+export default AppRouter;
