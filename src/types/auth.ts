@@ -9,7 +9,10 @@ export type UserAccount = {
   fullName: string
   phoneNumber: string
   email: string
+  country: string
+  agricultureBusinessName: string
   preferredLanguage: PreferredLanguage
+  profileCompleted: boolean
   isActive: boolean
   createdAt: Timestamp | null
   updatedAt: Timestamp | null
@@ -49,6 +52,14 @@ export type RegisterAccountInput = {
   phoneNumber: string
   email: string
   password: string
+  preferredLanguage: PreferredLanguage
+}
+
+export type CompleteProfileInput = {
+  fullName: string
+  phoneNumber: string
+  country: string
+  agricultureBusinessName: string
   preferredLanguage: PreferredLanguage
 }
 

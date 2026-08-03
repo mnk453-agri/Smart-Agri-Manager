@@ -1,23 +1,33 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Archive,
   Building2,
   LoaderCircle,
   Map,
-  MapPin,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
-  Sprout,
-  Trash2,
 } from 'lucide-react'
 import LandFormModal from '../components/LandFormModal'
+import { useAuth } from '../contexts/AuthContext'
 import {
+  archiveLand,
+  calculateLandSummary,
   createLand,
-  deleteLand,
   getLands,
+  restoreLand,
   updateLand,
 } from '../services/landService'
-import type { CreateLandInput, Land } from '../types/land'
+import type {
+  CreateLandInput,
+  Land,
+  LandOwnershipType,
+  LandStatus,
+} from '../types/land'
+
+type OwnershipFilter = 'all' | LandOwnershipType
+type StatusFilter = 'all' | LandStatus
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-PK', {
@@ -27,23 +37,46 @@ function formatCurrency(value: number) {
   }).format(value)
 }
 
+function formatAcres(value: number) {
+  return `${value.toLocaleString()} Acres`
+}
+
 function LandsPage() {
+  const { activeWorkspace } = useAuth()
+
   const [lands, setLands] = useState<Land[]>([])
   const [searchTerm, setSearchTerm] = useState('')
+  const [ownershipFilter, setOwnershipFilter] =
+    useState<OwnershipFilter>('all')
+  const [statusFilter, setStatusFilter] =
+    useState<StatusFilter>('active')
+
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingLand, setEditingLand] = useState<Land | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [pageError, setPageError] = useState('')
+
+  const organizationId =
+    activeWorkspace?.organization.id ?? ''
 
   const loadLands = async () => {
     try {
       setIsLoading(true)
       setPageError('')
 
-      const records = await getLands()
+      /*
+       * During development, records created before workspace support
+       * may not contain organizationId. When no active workspace is
+       * available, getLands() safely loads the existing records.
+       */
+      const records = organizationId
+        ? await getLands(organizationId)
+        : await getLands()
+
       setLands(records)
     } catch (error) {
-      console.error(error)
+      console.error('Unable to load lands:', error)
+
       setPageError(
         'Unable to load land records. Please check the Firestore database and security rules.',
       )
@@ -54,67 +87,79 @@ function LandsPage() {
 
   useEffect(() => {
     void loadLands()
-  }, [])
+  }, [organizationId])
 
-  const totalAcres = lands.reduce(
-    (total, land) => total + land.totalAcres,
-    0,
-  )
-
-  // This will later be calculated from active land assignments and crops.
-  const utilizedAcres = 0
-  const unutilizedAcres = Math.max(totalAcres - utilizedAcres, 0)
-
-  const annualLeaseCost = lands.reduce(
-    (total, land) => total + land.annualLeaseAmount,
-    0,
+  const summary = useMemo(
+    () => calculateLandSummary(lands),
+    [lands],
   )
 
   const filteredLands = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase()
+    const normalizedSearch = searchTerm
+      .trim()
+      .toLowerCase()
 
-    if (!normalizedSearch) {
-      return lands
-    }
+    return lands.filter((land) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        [
+          land.landName,
+          land.location,
+          land.landCode,
+          land.soilType,
+        ].some((value) =>
+          value
+            .toLowerCase()
+            .includes(normalizedSearch),
+        )
 
-    return lands.filter((land) =>
-      [
-        land.landName,
-        land.location,
-        land.ownership,
-        land.soilType,
-      ].some((value) =>
-        value.toLowerCase().includes(normalizedSearch),
-      ),
-    )
-  }, [lands, searchTerm])
+      const matchesOwnership =
+        ownershipFilter === 'all' ||
+        land.ownership === ownershipFilter
+
+      const matchesStatus =
+        statusFilter === 'all' ||
+        land.status === statusFilter
+
+      return (
+        matchesSearch &&
+        matchesOwnership &&
+        matchesStatus
+      )
+    })
+  }, [
+    lands,
+    searchTerm,
+    ownershipFilter,
+    statusFilter,
+  ])
 
   const landSummary = [
     {
+      title: 'Total Land Sites',
+      value: summary.totalLandSites.toLocaleString(),
+      description: 'Active land locations',
+      icon: Map,
+      style: 'bg-sky-100 text-sky-700',
+    },
+    {
       title: 'Total Land',
-      value: `${totalAcres.toLocaleString()} Acres`,
+      value: formatAcres(summary.totalLandAcres),
       description: 'Owned and leased land',
       icon: Map,
       style: 'bg-emerald-100 text-emerald-700',
     },
     {
-      title: 'Utilized Land',
-      value: `${utilizedAcres.toLocaleString()} Acres`,
-      description: 'Currently assigned to active crops',
-      icon: Sprout,
+      title: 'Owned Land',
+      value: formatAcres(summary.ownedLandAcres),
+      description: 'Total active owned land',
+      icon: Building2,
       style: 'bg-lime-100 text-lime-700',
     },
     {
-      title: 'Unutilized Land',
-      value: `${unutilizedAcres.toLocaleString()} Acres`,
-      description: 'Available for future crop allocation',
-      icon: MapPin,
-      style: 'bg-amber-100 text-amber-700',
-    },
-    {
-      title: 'Annual Lease Cost',
-      value: formatCurrency(annualLeaseCost),
-      description: 'Total yearly cost of leased land',
+      title: 'Leased Land',
+      value: formatAcres(summary.leasedLandAcres),
+      description: 'Total active leased land',
       icon: Building2,
       style: 'bg-violet-100 text-violet-700',
     },
@@ -135,19 +180,34 @@ function LandsPage() {
     setEditingLand(null)
   }
 
-  const handleFormSubmit = async (input: CreateLandInput) => {
+  const handleFormSubmit = async (
+    input: CreateLandInput,
+  ) => {
+    const inputWithWorkspace: CreateLandInput = {
+      ...input,
+      organizationId,
+    }
+
     if (editingLand) {
-      await updateLand(editingLand.id, input)
+      await updateLand(
+        editingLand.id,
+        inputWithWorkspace,
+      )
     } else {
-      await createLand(input)
+      await createLand(inputWithWorkspace)
     }
 
     await loadLands()
   }
 
-  const handleDelete = async (land: Land) => {
+  const handleArchive = async (land: Land) => {
+    const landLabel =
+      land.landName ||
+      land.location ||
+      land.landCode
+
     const confirmed = window.confirm(
-      `Are you sure you want to delete "${land.landName}"?`,
+      `Archive "${landLabel}"?\n\nThe land will be hidden from active records, but its historical data will remain preserved.`,
     )
 
     if (!confirmed) {
@@ -156,11 +216,22 @@ function LandsPage() {
 
     try {
       setPageError('')
-      await deleteLand(land.id)
+      await archiveLand(land.id)
       await loadLands()
     } catch (error) {
-      console.error(error)
-      setPageError('Unable to delete the land record.')
+      console.error('Unable to archive land:', error)
+      setPageError('Unable to archive the land record.')
+    }
+  }
+
+  const handleRestore = async (land: Land) => {
+    try {
+      setPageError('')
+      await restoreLand(land.id)
+      await loadLands()
+    } catch (error) {
+      console.error('Unable to restore land:', error)
+      setPageError('Unable to restore the land record.')
     }
   }
 
@@ -230,29 +301,68 @@ function LandsPage() {
         </section>
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">
-                Land Records
-              </h2>
+          <div className="border-b border-slate-200 p-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  Land Records
+                </h2>
 
-              <p className="mt-1 text-sm text-slate-500">
-                {lands.length} land record{lands.length === 1 ? '' : 's'}
-              </p>
-            </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  {filteredLands.length} displayed record
+                  {filteredLands.length === 1 ? '' : 's'}
+                </p>
+              </div>
 
-            <div className="flex w-full items-center gap-3 rounded-xl border border-slate-200 px-4 py-2.5 sm:w-80">
-              <Search className="h-5 w-5 text-slate-400" />
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <div className="flex w-full items-center gap-3 rounded-xl border border-slate-200 px-4 py-2.5 sm:w-72">
+                  <Search className="h-5 w-5 text-slate-400" />
 
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={(event) =>
-                  setSearchTerm(event.target.value)
-                }
-                placeholder="Search lands..."
-                className="w-full border-0 bg-transparent text-sm outline-none placeholder:text-slate-400"
-              />
+                  <input
+                    type="search"
+                    value={searchTerm}
+                    onChange={(event) =>
+                      setSearchTerm(event.target.value)
+                    }
+                    placeholder="Search name or location..."
+                    className="w-full border-0 bg-transparent text-sm outline-none placeholder:text-slate-400"
+                  />
+                </div>
+
+                <select
+                  value={ownershipFilter}
+                  onChange={(event) =>
+                    setOwnershipFilter(
+                      event.target.value as OwnershipFilter,
+                    )
+                  }
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+                >
+                  <option value="all">
+                    All Ownership
+                  </option>
+                  <option value="owned">Owned</option>
+                  <option value="leased">Leased</option>
+                </select>
+
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(
+                      event.target.value as StatusFilter,
+                    )
+                  }
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+                >
+                  <option value="active">Active</option>
+                  <option value="archived">
+                    Archived
+                  </option>
+                  <option value="all">
+                    All Statuses
+                  </option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -261,13 +371,12 @@ function LandsPage() {
               <thead className="bg-slate-50">
                 <tr>
                   {[
-                    'Land Name',
+                    'Land',
                     'Location',
-                    'Total Acres',
-                    'Utilized',
-                    'Available',
+                    'Area',
                     'Ownership',
                     'Annual Lease',
+                    'Status',
                     'Actions',
                   ].map((heading) => (
                     <th
@@ -283,7 +392,10 @@ function LandsPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-16 text-center">
+                    <td
+                      colSpan={7}
+                      className="px-5 py-16 text-center"
+                    >
                       <LoaderCircle className="mx-auto h-7 w-7 animate-spin text-emerald-700" />
 
                       <p className="mt-3 text-sm text-slate-500">
@@ -293,7 +405,10 @@ function LandsPage() {
                   </tr>
                 ) : filteredLands.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-16 text-center">
+                    <td
+                      colSpan={7}
+                      className="px-5 py-16 text-center"
+                    >
                       <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
                         <Map className="h-7 w-7" />
                       </div>
@@ -306,23 +421,26 @@ function LandsPage() {
 
                       <p className="mt-2 text-sm text-slate-500">
                         {lands.length === 0
-                          ? 'Add your first owned or leased land record to begin.'
-                          : 'Try changing your search text.'}
+                          ? 'Use Add Land whenever you are ready.'
+                          : 'Try changing the search or filters.'}
                       </p>
                     </td>
                   </tr>
                 ) : (
                   filteredLands.map((land) => {
-                    const availableAcres = land.totalAcres
+                    const landLabel =
+                      land.landName ||
+                      land.location ||
+                      land.landCode
 
                     return (
                       <tr
                         key={land.id}
                         className="transition hover:bg-slate-50"
                       >
-                        <td className="whitespace-nowrap px-5 py-4">
+                        <td className="px-5 py-4">
                           <p className="font-semibold text-slate-900">
-                            {land.landName}
+                            {landLabel}
                           </p>
 
                           {land.soilType && (
@@ -333,19 +451,11 @@ function LandsPage() {
                         </td>
 
                         <td className="px-5 py-4 text-sm text-slate-600">
-                          {land.location}
+                          {land.location || '—'}
                         </td>
 
                         <td className="whitespace-nowrap px-5 py-4 text-sm font-semibold text-slate-900">
-                          {land.totalAcres.toLocaleString()}
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">
-                          0
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">
-                          {availableAcres.toLocaleString()}
+                          {formatAcres(land.totalAcres)}
                         </td>
 
                         <td className="whitespace-nowrap px-5 py-4">
@@ -363,29 +473,61 @@ function LandsPage() {
 
                         <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">
                           {land.ownership === 'leased'
-                            ? formatCurrency(land.annualLeaseAmount)
+                            ? formatCurrency(
+                                land.annualLeaseAmount,
+                              )
                             : '—'}
+                        </td>
+
+                        <td className="whitespace-nowrap px-5 py-4">
+                          <span
+                            className={[
+                              'inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize',
+                              land.status === 'active'
+                                ? 'bg-sky-100 text-sky-700'
+                                : 'bg-slate-200 text-slate-600',
+                            ].join(' ')}
+                          >
+                            {land.status}
+                          </span>
                         </td>
 
                         <td className="whitespace-nowrap px-5 py-4">
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              aria-label={`Edit ${land.landName}`}
-                              onClick={() => openEditForm(land)}
+                              aria-label={`Edit ${landLabel}`}
+                              onClick={() =>
+                                openEditForm(land)
+                              }
                               className="rounded-lg p-2 text-sky-700 transition hover:bg-sky-50"
                             >
                               <Pencil className="h-4 w-4" />
                             </button>
 
-                            <button
-                              type="button"
-                              aria-label={`Delete ${land.landName}`}
-                              onClick={() => void handleDelete(land)}
-                              className="rounded-lg p-2 text-rose-700 transition hover:bg-rose-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {land.status === 'active' ? (
+                              <button
+                                type="button"
+                                aria-label={`Archive ${landLabel}`}
+                                onClick={() =>
+                                  void handleArchive(land)
+                                }
+                                className="rounded-lg p-2 text-amber-700 transition hover:bg-amber-50"
+                              >
+                                <Archive className="h-4 w-4" />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                aria-label={`Restore ${landLabel}`}
+                                onClick={() =>
+                                  void handleRestore(land)
+                                }
+                                className="rounded-lg p-2 text-emerald-700 transition hover:bg-emerald-50"
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

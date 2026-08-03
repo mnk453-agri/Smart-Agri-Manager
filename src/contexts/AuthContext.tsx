@@ -9,6 +9,7 @@ import {
 import { onAuthStateChanged, type User } from 'firebase/auth'
 import { auth } from '../services/firebase'
 import {
+  completeUserProfile,
   createWorkspaceForOwner,
   getOrganization,
   getUserAccount,
@@ -19,6 +20,7 @@ import {
 } from '../services/authService'
 import type {
   ActiveWorkspace,
+  CompleteProfileInput,
   CreateWorkspaceInput,
   LoginInput,
   Organization,
@@ -35,6 +37,7 @@ type AuthContextValue = {
   activeWorkspace: ActiveWorkspace | null
   isLoading: boolean
   register: (input: RegisterAccountInput) => Promise<void>
+  completeProfile: (input: CompleteProfileInput) => Promise<void>
   createWorkspace: (input: CreateWorkspaceInput) => Promise<void>
   login: (input: LoginInput) => Promise<void>
   logout: () => Promise<void>
@@ -158,6 +161,46 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await registerAccount(input)
   }
 
+  const completeProfile = async (
+    input: CompleteProfileInput,
+  ) => {
+    if (!firebaseUser) {
+      throw new Error(
+        'A signed-in user is required to complete a profile.',
+      )
+    }
+
+    await completeUserProfile(firebaseUser.uid, input)
+
+    const existingMemberships = await getUserMemberships(
+      firebaseUser.uid,
+    )
+
+    if (existingMemberships.length === 0) {
+      const enteredBusinessName =
+        input.agricultureBusinessName.trim()
+
+      const automaticBusinessName =
+        `${input.fullName.trim()} Agriculture`
+
+      const workspaceResult = await createWorkspaceForOwner(
+        firebaseUser.uid,
+        {
+          organizationName:
+            enteredBusinessName || automaticBusinessName,
+          defaultLanguage: input.preferredLanguage,
+        },
+      )
+
+      localStorage.setItem(
+        'smartAgriActiveWorkspaceId',
+        workspaceResult.organizationId,
+      )
+    }
+
+    await loadAuthenticatedUser(firebaseUser)
+  }
+
   const createWorkspace = async (
     input: CreateWorkspaceInput,
   ) => {
@@ -172,12 +215,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       input,
     )
 
-    await loadAuthenticatedUser(firebaseUser)
-
     localStorage.setItem(
       'smartAgriActiveWorkspaceId',
       result.organizationId,
     )
+
+    await loadAuthenticatedUser(firebaseUser)
   }
 
   const login = async (input: LoginInput) => {
@@ -222,6 +265,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       activeWorkspace,
       isLoading,
       register,
+      completeProfile,
       createWorkspace,
       login,
       logout,

@@ -11,11 +11,13 @@ import {
   getDocs,
   query,
   serverTimestamp,
+  updateDoc,
   where,
   writeBatch,
 } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import type {
+  CompleteProfileInput,
   CreateWorkspaceInput,
   LoginInput,
   Organization,
@@ -35,7 +37,6 @@ export async function registerAccount(
 
   const firebaseUser = userCredential.user
   const userReference = doc(db, 'users', firebaseUser.uid)
-
   const batch = writeBatch(db)
 
   batch.set(userReference, {
@@ -43,7 +44,10 @@ export async function registerAccount(
     fullName: input.fullName.trim(),
     phoneNumber: input.phoneNumber.trim(),
     email: input.email.trim().toLowerCase(),
+    country: '',
+    agricultureBusinessName: '',
     preferredLanguage: input.preferredLanguage,
+    profileCompleted: false,
     isActive: true,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -52,6 +56,24 @@ export async function registerAccount(
   await batch.commit()
 
   return firebaseUser
+}
+
+export async function completeUserProfile(
+  uid: string,
+  input: CompleteProfileInput,
+) {
+  const userReference = doc(db, 'users', uid)
+
+  await updateDoc(userReference, {
+    fullName: input.fullName.trim(),
+    phoneNumber: input.phoneNumber.trim(),
+    country: input.country.trim(),
+    agricultureBusinessName:
+      input.agricultureBusinessName.trim(),
+    preferredLanguage: input.preferredLanguage,
+    profileCompleted: true,
+    updatedAt: serverTimestamp(),
+  })
 }
 
 export async function createWorkspaceForOwner(
@@ -111,18 +133,13 @@ export async function logoutUser() {
 }
 
 export async function resetUserPassword(email: string) {
-  await sendPasswordResetEmail(
-    auth,
-    email.trim(),
-  )
+  await sendPasswordResetEmail(auth, email.trim())
 }
 
 export async function getUserAccount(
   uid: string,
 ): Promise<UserAccount | null> {
-  const snapshot = await getDoc(
-    doc(db, 'users', uid),
-  )
+  const snapshot = await getDoc(doc(db, 'users', uid))
 
   if (!snapshot.exists()) {
     return null
@@ -135,8 +152,11 @@ export async function getUserAccount(
     fullName: data.fullName ?? '',
     phoneNumber: data.phoneNumber ?? '',
     email: data.email ?? '',
-    preferredLanguage:
-      data.preferredLanguage ?? 'en',
+    country: data.country ?? '',
+    agricultureBusinessName:
+      data.agricultureBusinessName ?? '',
+    preferredLanguage: data.preferredLanguage ?? 'en',
+    profileCompleted: Boolean(data.profileCompleted),
     isActive: Boolean(data.isActive),
     createdAt: data.createdAt ?? null,
     updatedAt: data.updatedAt ?? null,
@@ -161,11 +181,8 @@ export async function getOrganization(
     name: data.name ?? '',
     currency: 'PKR',
     landUnit: 'Acres',
-    defaultLanguage:
-      data.defaultLanguage ?? 'en',
-    setupCompleted: Boolean(
-      data.setupCompleted,
-    ),
+    defaultLanguage: data.defaultLanguage ?? 'en',
+    setupCompleted: Boolean(data.setupCompleted),
     createdBy: data.createdBy ?? '',
     createdAt: data.createdAt ?? null,
     updatedAt: data.updatedAt ?? null,
@@ -181,27 +198,21 @@ export async function getUserMemberships(
     where('isActive', '==', true),
   )
 
-  const snapshot = await getDocs(
-    membershipsQuery,
-  )
+  const snapshot = await getDocs(membershipsQuery)
 
-  return snapshot.docs.map(
-    (membershipDocument) => {
-      const data = membershipDocument.data()
+  return snapshot.docs.map((membershipDocument) => {
+    const data = membershipDocument.data()
 
-      return {
-        id: membershipDocument.id,
-        organizationId:
-          data.organizationId ?? '',
-        userId: data.userId ?? '',
-        role: data.role ?? 'farmer',
-        linkedFarmerId:
-          data.linkedFarmerId ?? null,
-        isActive: Boolean(data.isActive),
-        invitedBy: data.invitedBy ?? null,
-        joinedAt: data.joinedAt ?? null,
-        updatedAt: data.updatedAt ?? null,
-      }
-    },
-  )
+    return {
+      id: membershipDocument.id,
+      organizationId: data.organizationId ?? '',
+      userId: data.userId ?? '',
+      role: data.role ?? 'farmer',
+      linkedFarmerId: data.linkedFarmerId ?? null,
+      isActive: Boolean(data.isActive),
+      invitedBy: data.invitedBy ?? null,
+      joinedAt: data.joinedAt ?? null,
+      updatedAt: data.updatedAt ?? null,
+    }
+  })
 }
