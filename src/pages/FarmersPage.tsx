@@ -3,6 +3,7 @@ import {
   LoaderCircle,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
   Trash2,
   UserCheck,
@@ -12,8 +13,9 @@ import {
 import FarmerFormModal from '../components/FarmerFormModal'
 import {
   createFarmer,
-  deleteFarmer,
+  archiveFarmer,
   getFarmers,
+  restoreFarmer,
   updateFarmer,
 } from '../services/farmerService'
 import type { CreateFarmerInput, Farmer } from '../types/farmer'
@@ -21,6 +23,7 @@ import type { CreateFarmerInput, Farmer } from '../types/farmer'
 function FarmersPage() {
   const [farmers, setFarmers] = useState<Farmer[]>([])
   const [searchTerm, setSearchTerm] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingFarmer, setEditingFarmer] = useState<Farmer | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -30,7 +33,13 @@ function FarmersPage() {
     try {
       setIsLoading(true)
       setPageError('')
-      setFarmers(await getFarmers())
+      const records = await getFarmers()
+
+setFarmers(
+  showArchived
+    ? records.filter((farmer) => farmer.status === 'archived')
+    : records.filter((farmer) => farmer.status === 'active'),
+)
     } catch (error) {
       console.error(error)
       setPageError('Unable to load farmer records.')
@@ -41,7 +50,7 @@ function FarmersPage() {
 
   useEffect(() => {
     void loadFarmers()
-  }, [])
+  }, [showArchived])
 
   const activeFarmers = farmers.filter(
     (farmer) => farmer.status === 'active',
@@ -86,14 +95,22 @@ function FarmersPage() {
     }
 
     try {
-      await deleteFarmer(farmer.id)
+      await archiveFarmer(farmer.id)
       await loadFarmers()
     } catch (error) {
       console.error(error)
       setPageError('Unable to delete the farmer record.')
     }
   }
-
+const handleRestore = async (farmer: Farmer) => {
+  try {
+    await restoreFarmer(farmer.id)
+    await loadFarmers()
+  } catch (error) {
+    console.error(error)
+    setPageError('Unable to restore the farmer record.')
+  }
+}
   const summaryCards = [
     {
       title: 'Total Farmers',
@@ -192,6 +209,17 @@ function FarmersPage() {
               </p>
             </div>
 
+            <button
+            type="button"
+            onClick={() =>
+              setShowArchived((current) => !current)
+              }
+              className="whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                {showArchived
+  ? 'Show Active Farmers'
+  : 'Show Archived Farmers'}
+              </button>
             <div className="flex w-full items-center gap-3 rounded-xl border border-slate-200 px-4 py-2.5 sm:w-80">
               <Search className="h-5 w-5 text-slate-400" />
 
@@ -294,13 +322,25 @@ function FarmersPage() {
                             <Pencil className="h-4 w-4" />
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={() => void handleDelete(farmer)}
-                            className="rounded-lg p-2 text-rose-700 hover:bg-rose-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                         {farmer.status === 'active' ? (
+  <button
+    type="button"
+    aria-label={`Archive ${farmer.farmerName}`}
+    onClick={() => void handleDelete(farmer)}
+    className="rounded-lg p-2 text-amber-700 hover:bg-amber-50"
+  >
+    <Trash2 className="h-4 w-4" />
+  </button>
+) : (
+  <button
+    type="button"
+    aria-label={`Restore ${farmer.farmerName}`}
+    onClick={() => void handleRestore(farmer)}
+    className="rounded-lg p-2 text-emerald-700 hover:bg-emerald-50"
+  >
+    <RotateCcw className="h-4 w-4" />
+  </button>
+)}
                         </div>
                       </td>
                     </tr>
