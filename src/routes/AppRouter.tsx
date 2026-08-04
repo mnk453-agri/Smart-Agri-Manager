@@ -4,6 +4,7 @@ import CreateWorkspacePage from '../pages/CreateWorkspacePage'
 import FarmersPage from '../pages/FarmersPage'
 import HomePage from '../pages/HomePage'
 import LandsPage from '../pages/LandsPage'
+import LandAssignmentsPage from '../pages/LandAssignmentsPage'
 import LoginPage from '../pages/LoginPage'
 import ProfileSetupPage from '../pages/ProfileSetupPage'
 import RegisterPage from '../pages/RegisterPage'
@@ -23,10 +24,14 @@ function AppRouter() {
       />
 
       <Route element={<DashboardLayout />}>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/lands" element={<LandsPage />} />
-        <Route path="/farmers" element={<FarmersPage />} />
-      </Route>
+  <Route path="/" element={<HomePage />} />
+  <Route path="/lands" element={<LandsPage />} />
+  <Route
+    path="/land-assignments"
+    element={<LandAssignmentsPage />}
+  />
+  <Route path="/farmers" element={<FarmersPage />} />
+</Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

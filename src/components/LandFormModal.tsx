@@ -3,7 +3,7 @@ import { LoaderCircle, Save, X } from 'lucide-react'
 import type {
   CreateLandInput,
   Land,
-  LandOwnership,
+  LandOwnershipType as LandOwnership,
 } from '../types/land'
 
 type LandFormModalProps = {

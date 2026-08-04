@@ -5,6 +5,7 @@ import {
   getDocs,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -19,15 +20,73 @@ import type {
 
 const landsCollection = collection(db, 'lands')
 
-function createLandCode(documentId: string) {
-  return `LAND-${documentId.slice(0, 8).toUpperCase()}`
+async function createLandCode() {
+  const landsSnapshot =
+    await getDocs(landsCollection)
+
+  const highestExistingCode =
+    landsSnapshot.docs.reduce(
+      (highest, landDocument) => {
+        const landCode = String(
+          landDocument.data().landCode ?? '',
+        )
+        const match =
+          /^LAND-(\d+)$/.exec(landCode)
+
+        return match
+          ? Math.max(
+              highest,
+              Number(match[1]),
+            )
+          : highest
+      },
+      0,
+    )
+
+  const counterReference = doc(
+    db,
+    'counters',
+    'lands',
+  )
+
+  return runTransaction(
+    db,
+    async (transaction) => {
+      const counterSnapshot =
+        await transaction.get(
+          counterReference,
+        )
+
+      const storedValue = Number(
+        counterSnapshot.data()?.value ?? 0,
+      )
+
+      const nextValue =
+        Math.max(
+          storedValue,
+          highestExistingCode,
+          landsSnapshot.size,
+        ) + 1
+
+      transaction.set(
+        counterReference,
+        {
+          value: nextValue,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+
+      return `LAND-${String(nextValue).padStart(3, '0')}`
+    },
+  )
 }
 
 export async function createLand(
   input: CreateLandInput,
 ): Promise<string> {
   const landReference = doc(landsCollection)
-  const landCode = createLandCode(landReference.id)
+  const landCode = await createLandCode()
 
   await setDoc(landReference, {
     organizationId: input.organizationId ?? '',
@@ -73,9 +132,7 @@ export async function getLands(
       id: landDocument.id,
 
       organizationId: data.organizationId ?? '',
-      landCode:
-        data.landCode ??
-        createLandCode(landDocument.id),
+      landCode: data.landCode ?? 'LAND-000',
 
       landName: data.landName ?? '',
       location: data.location ?? '',

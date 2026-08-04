@@ -5,6 +5,7 @@ import {
   getDocs,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -19,15 +20,73 @@ import type {
 
 const farmersCollection = collection(db, 'farmers')
 
-function createFarmerCode(documentId: string) {
-  return `FARMER-${documentId.slice(0, 8).toUpperCase()}`
+async function createFarmerCode() {
+  const farmersSnapshot =
+    await getDocs(farmersCollection)
+
+  const highestExistingCode =
+    farmersSnapshot.docs.reduce(
+      (highest, farmerDocument) => {
+        const farmerCode = String(
+          farmerDocument.data().farmerCode ?? '',
+        )
+        const match =
+          /^FARMER-(\d+)$/.exec(farmerCode)
+
+        return match
+          ? Math.max(
+              highest,
+              Number(match[1]),
+            )
+          : highest
+      },
+      0,
+    )
+
+  const counterReference = doc(
+    db,
+    'counters',
+    'farmers',
+  )
+
+  return runTransaction(
+    db,
+    async (transaction) => {
+      const counterSnapshot =
+        await transaction.get(
+          counterReference,
+        )
+
+      const storedValue = Number(
+        counterSnapshot.data()?.value ?? 0,
+      )
+
+      const nextValue =
+        Math.max(
+          storedValue,
+          highestExistingCode,
+          farmersSnapshot.size,
+        ) + 1
+
+      transaction.set(
+        counterReference,
+        {
+          value: nextValue,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+
+      return `FARMER-${String(nextValue).padStart(3, '0')}`
+    },
+  )
 }
 
 export async function createFarmer(
   input: CreateFarmerInput,
 ): Promise<string> {
   const farmerReference = doc(farmersCollection)
-  const farmerCode = createFarmerCode(farmerReference.id)
+  const farmerCode = await createFarmerCode()
 
   await setDoc(farmerReference, {
     organizationId: input.organizationId ?? '',
@@ -58,35 +117,39 @@ export async function getFarmers(
 
   const snapshot = await getDocs(farmersQuery)
 
-  const farmers = snapshot.docs.map((farmerDocument) => {
-    const data = farmerDocument.data()
+  const farmers = snapshot.docs.map(
+    (farmerDocument) => {
+      const data = farmerDocument.data()
 
-    return {
-      id: farmerDocument.id,
+      return {
+        id: farmerDocument.id,
 
-      organizationId: data.organizationId ?? '',
-      farmerCode:
-        data.farmerCode ??
-        createFarmerCode(farmerDocument.id),
+        organizationId:
+          data.organizationId ?? '',
+        farmerCode:
+          data.farmerCode ?? 'FARMER-000',
 
-      farmerName: data.farmerName ?? '',
-      casteName: data.casteName ?? '',
-      phoneNumber: data.phoneNumber ?? '',
-      notes: data.notes ?? '',
+        farmerName: data.farmerName ?? '',
+        casteName: data.casteName ?? '',
+        phoneNumber: data.phoneNumber ?? '',
+        notes: data.notes ?? '',
 
-      status:
-        data.status === 'inactive'
-          ? 'archived'
-          : (data.status ?? 'active'),
+        status:
+          data.status === 'inactive'
+            ? 'archived'
+            : (data.status ?? 'active'),
 
-      assignedLandIds: Array.isArray(data.assignedLandIds)
-        ? data.assignedLandIds
-        : [],
+        assignedLandIds: Array.isArray(
+          data.assignedLandIds,
+        )
+          ? data.assignedLandIds
+          : [],
 
-      createdAt: data.createdAt ?? null,
-      updatedAt: data.updatedAt ?? null,
-    } satisfies Farmer
-  })
+        createdAt: data.createdAt ?? null,
+        updatedAt: data.updatedAt ?? null,
+      } satisfies Farmer
+    },
+  )
 
   if (!organizationId) {
     return farmers
@@ -121,7 +184,8 @@ export async function updateFarmer(
     }),
 
     ...(input.assignedLandIds !== undefined && {
-      assignedLandIds: input.assignedLandIds,
+      assignedLandIds:
+        input.assignedLandIds,
     }),
 
     updatedAt: serverTimestamp(),

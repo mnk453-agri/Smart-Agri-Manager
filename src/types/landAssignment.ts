@@ -26,3 +26,10 @@ export type CreateLandAssignmentInput = {
   status: LandAssignmentStatus
   notes: string
 }
+
+export type LandAssignmentSummary = {
+  totalAssignments: number
+  activeAssignments: number
+  closedAssignments: number
+  totalAssignedAcres: number
+}
