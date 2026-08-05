@@ -3,6 +3,7 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { Link } from 'react-router'
 import {
   Archive,
   Building2,
@@ -757,9 +758,12 @@ function LandsPage() {
                           className="transition hover:bg-slate-50"
                         >
                           <td className="px-5 py-4">
-                            <p className="font-bold text-slate-900">
-                              {landLabel}
-                            </p>
+                            <Link
+  to={`/lands/${land.id}`}
+  className="font-bold text-slate-900 transition hover:text-emerald-700 hover:underline"
+>
+  {landLabel}
+</Link>
                             <p className="mt-1 text-xs font-semibold text-emerald-700">
                               {land.landCode}
                             </p>

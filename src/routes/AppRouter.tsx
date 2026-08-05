@@ -10,6 +10,7 @@ import FarmerDetailsPage from '../pages/FarmerDetailsPage'
 import FarmersPage from '../pages/FarmersPage'
 import HomePage from '../pages/HomePage'
 import LandAssignmentsPage from '../pages/LandAssignmentsPage'
+import LandDetailsPage from '../pages/LandDetailsPage'
 import LandsPage from '../pages/LandsPage'
 import LoginPage from '../pages/LoginPage'
 import ProfileSetupPage from '../pages/ProfileSetupPage'
@@ -43,6 +44,10 @@ function AppRouter() {
         <Route
           path="/lands"
           element={<LandsPage />}
+        />
+        <Route
+          path="/lands/:landId"
+          element={<LandDetailsPage />}
         />
         <Route
           path="/land-assignments"
