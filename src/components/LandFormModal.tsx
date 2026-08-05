@@ -1,5 +1,12 @@
-import { useEffect, useState } from 'react'
-import { LoaderCircle, Save, X } from 'lucide-react'
+import {
+  useEffect,
+  useState,
+} from 'react'
+import {
+  LoaderCircle,
+  Save,
+  X,
+} from 'lucide-react'
 import type {
   CreateLandInput,
   Land,
@@ -10,7 +17,9 @@ type LandFormModalProps = {
   isOpen: boolean
   land?: Land | null
   onClose: () => void
-  onSubmit: (input: CreateLandInput) => Promise<void>
+  onSubmit: (
+    input: CreateLandInput,
+  ) => Promise<void>
 }
 
 const initialForm: CreateLandInput = {
@@ -29,9 +38,14 @@ function LandFormModal({
   onClose,
   onSubmit,
 }: LandFormModalProps) {
-  const [form, setForm] = useState<CreateLandInput>(initialForm)
-  const [isSaving, setIsSaving] = useState(false)
-  const [error, setError] = useState('')
+  const [form, setForm] =
+    useState<CreateLandInput>(
+      initialForm,
+    )
+  const [isSaving, setIsSaving] =
+    useState(false)
+  const [error, setError] =
+    useState('')
 
   useEffect(() => {
     if (land) {
@@ -41,7 +55,8 @@ function LandFormModal({
         totalAcres: land.totalAcres,
         ownership: land.ownership,
         soilType: land.soilType,
-        annualLeaseAmount: land.annualLeaseAmount,
+        annualLeaseAmount:
+          land.annualLeaseAmount,
         notes: land.notes,
       })
     } else {
@@ -55,7 +70,9 @@ function LandFormModal({
     return null
   }
 
-  const updateField = <K extends keyof CreateLandInput>(
+  const updateField = <
+    K extends keyof CreateLandInput,
+  >(
     field: K,
     value: CreateLandInput[K],
   ) => {
@@ -72,17 +89,23 @@ function LandFormModal({
     setError('')
 
     if (!form.landName.trim()) {
-      setError('Land name is required.')
+      setError(
+        'Land name is required.',
+      )
       return
     }
 
     if (!form.location.trim()) {
-      setError('Location is required.')
+      setError(
+        'Location is required.',
+      )
       return
     }
 
     if (form.totalAcres <= 0) {
-      setError('Total acres must be greater than zero.')
+      setError(
+        'Total acres must be greater than zero.',
+      )
       return
     }
 
@@ -90,7 +113,9 @@ function LandFormModal({
       form.ownership === 'leased' &&
       form.annualLeaseAmount < 0
     ) {
-      setError('Annual lease amount cannot be negative.')
+      setError(
+        'Annual lease amount cannot be negative.',
+      )
       return
     }
 
@@ -99,9 +124,12 @@ function LandFormModal({
 
       await onSubmit({
         ...form,
-        landName: form.landName.trim(),
-        location: form.location.trim(),
-        soilType: form.soilType.trim(),
+        landName:
+          form.landName.trim(),
+        location:
+          form.location.trim(),
+        soilType:
+          form.soilType.trim(),
         notes: form.notes.trim(),
         annualLeaseAmount:
           form.ownership === 'owned'
@@ -112,14 +140,16 @@ function LandFormModal({
       onClose()
     } catch (submitError) {
       console.error(submitError)
-      setError('Unable to save the land record. Please try again.')
+      setError(
+        'Unable to save the land record. Please try again.',
+      )
     } finally {
       setIsSaving(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3">
       <button
         type="button"
         aria-label="Close form"
@@ -127,15 +157,18 @@ function LandFormModal({
         onClick={onClose}
       />
 
-      <section className="relative z-10 max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        <header className="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-5">
+      <section className="relative z-10 flex max-h-[calc(100vh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
           <div>
             <h2 className="text-xl font-bold text-slate-900">
-              {land ? 'Edit Land' : 'Add New Land'}
+              {land
+                ? 'Edit Land'
+                : 'Add New Land'}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Enter the agricultural land details below.
+              Enter the agricultural land
+              details below.
             </p>
           </div>
 
@@ -149,156 +182,197 @@ function LandFormModal({
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} className="space-y-5 p-6">
-          {error && (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
-              {error}
+        <form
+          onSubmit={handleSubmit}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
+            {error && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700">
+                {error}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="sm:col-span-2">
+                <span className="text-sm font-semibold text-slate-700">
+                  Land Name *
+                </span>
+
+                <input
+                  type="text"
+                  value={form.landName}
+                  onChange={(event) =>
+                    updateField(
+                      'landName',
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Example: Main Farm"
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+                />
+              </label>
+
+              <label className="sm:col-span-2">
+                <span className="text-sm font-semibold text-slate-700">
+                  Location *
+                </span>
+
+                <input
+                  type="text"
+                  value={form.location}
+                  onChange={(event) =>
+                    updateField(
+                      'location',
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Village, city, district or identifying location"
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+                />
+              </label>
+
+              <label>
+                <span className="text-sm font-semibold text-slate-700">
+                  Total Acres *
+                </span>
+
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={
+                    form.totalAcres || ''
+                  }
+                  onFocus={(event) =>
+                    event.currentTarget.select()
+                  }
+                  onChange={(event) =>
+                    updateField(
+                      'totalAcres',
+                      Number(
+                        event.target.value,
+                      ),
+                    )
+                  }
+                  placeholder="0"
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+                />
+              </label>
+
+              <label>
+                <span className="text-sm font-semibold text-slate-700">
+                  Ownership *
+                </span>
+
+                <select
+                  value={form.ownership}
+                  onChange={(event) =>
+                    updateField(
+                      'ownership',
+                      event.target
+                        .value as LandOwnership,
+                    )
+                  }
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+                >
+                  <option value="owned">
+                    Owned
+                  </option>
+                  <option value="leased">
+                    Leased
+                  </option>
+                </select>
+              </label>
+
+              <label>
+                <span className="text-sm font-semibold text-slate-700">
+                  Soil Type
+                </span>
+
+                <input
+                  type="text"
+                  value={form.soilType}
+                  onChange={(event) =>
+                    updateField(
+                      'soilType',
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Example: Clay, sandy or saline"
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+                />
+              </label>
+
+              <label>
+                <span className="text-sm font-semibold text-slate-700">
+                  Annual Lease Amount
+                </span>
+
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  disabled={
+                    form.ownership ===
+                    'owned'
+                  }
+                  value={
+                    form.ownership ===
+                    'owned'
+                      ? ''
+                      : form
+                          .annualLeaseAmount ||
+                        ''
+                  }
+                  onFocus={(event) =>
+                    event.currentTarget.select()
+                  }
+                  onChange={(event) =>
+                    updateField(
+                      'annualLeaseAmount',
+                      Number(
+                        event.target.value,
+                      ),
+                    )
+                  }
+                  placeholder={
+                    form.ownership ===
+                    'owned'
+                      ? 'Not applicable'
+                      : 'PKR 0'
+                  }
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+                />
+              </label>
             </div>
-          )}
 
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <label className="sm:col-span-2">
+            <label className="block">
               <span className="text-sm font-semibold text-slate-700">
-                Land Name *
+                Notes
               </span>
 
-              <input
-                type="text"
-                value={form.landName}
-                onChange={(event) =>
-                  updateField('landName', event.target.value)
-                }
-                placeholder="Example: Main Farm"
-                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
-              />
-            </label>
-
-            <label className="sm:col-span-2">
-              <span className="text-sm font-semibold text-slate-700">
-                Location *
-              </span>
-
-              <input
-                type="text"
-                value={form.location}
-                onChange={(event) =>
-                  updateField('location', event.target.value)
-                }
-                placeholder="Village, city, district or identifying location"
-                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
-              />
-            </label>
-
-            <label>
-              <span className="text-sm font-semibold text-slate-700">
-                Total Acres *
-              </span>
-
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.totalAcres || ''}
+              <textarea
+                rows={2}
+                value={form.notes}
                 onChange={(event) =>
                   updateField(
-                    'totalAcres',
-                    Number(event.target.value),
+                    'notes',
+                    event.target.value,
                   )
                 }
-                placeholder="0"
-                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
-              />
-            </label>
-
-            <label>
-              <span className="text-sm font-semibold text-slate-700">
-                Ownership *
-              </span>
-
-              <select
-                value={form.ownership}
-                onChange={(event) =>
-                  updateField(
-                    'ownership',
-                    event.target.value as LandOwnership,
-                  )
-                }
-                className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
-              >
-                <option value="owned">Owned</option>
-                <option value="leased">Leased</option>
-              </select>
-            </label>
-
-            <label>
-              <span className="text-sm font-semibold text-slate-700">
-                Soil Type
-              </span>
-
-              <input
-                type="text"
-                value={form.soilType}
-                onChange={(event) =>
-                  updateField('soilType', event.target.value)
-                }
-                placeholder="Example: Clay, sandy or saline"
-                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
-              />
-            </label>
-
-            <label>
-              <span className="text-sm font-semibold text-slate-700">
-                Annual Lease Amount
-              </span>
-
-              <input
-                type="number"
-                min="0"
-                step="1"
-                disabled={form.ownership === 'owned'}
-                value={
-                  form.ownership === 'owned'
-                    ? ''
-                    : form.annualLeaseAmount || ''
-                }
-                onChange={(event) =>
-                  updateField(
-                    'annualLeaseAmount',
-                    Number(event.target.value),
-                  )
-                }
-                placeholder={
-                  form.ownership === 'owned'
-                    ? 'Not applicable'
-                    : 'PKR 0'
-                }
-                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+                placeholder="Optional information about the land"
+                className="mt-1.5 w-full resize-none rounded-xl border border-slate-300 px-4 py-2.5 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
               />
             </label>
           </div>
 
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-700">
-              Notes
-            </span>
-
-            <textarea
-              rows={4}
-              value={form.notes}
-              onChange={(event) =>
-                updateField('notes', event.target.value)
-              }
-              placeholder="Optional information about the land"
-              className="mt-2 w-full resize-none rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
-            />
-          </label>
-
-          <footer className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end">
+          <footer className="flex shrink-0 flex-col-reverse gap-3 border-t border-slate-200 bg-white px-6 py-3 sm:flex-row sm:justify-end">
             <button
               type="button"
               onClick={onClose}
               disabled={isSaving}
-              className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              className="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
             >
               Cancel
             </button>
@@ -306,7 +380,7 @@ function LandFormModal({
             <button
               type="submit"
               disabled={isSaving}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSaving ? (
                 <LoaderCircle className="h-5 w-5 animate-spin" />

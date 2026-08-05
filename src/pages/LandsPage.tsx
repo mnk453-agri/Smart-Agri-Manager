@@ -1,33 +1,70 @@
-import { useEffect, useMemo, useState } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import {
   Archive,
   Building2,
   LoaderCircle,
-  Map,
+  Map as MapIcon,
   Pencil,
   Plus,
   RotateCcw,
   Search,
+  Sprout,
 } from 'lucide-react'
 import LandFormModal from '../components/LandFormModal'
 import { useAuth } from '../contexts/AuthContext'
+import { getCrops } from '../services/cropService'
+import { getFarmers } from '../services/farmerService'
+import { getLandAssignments } from '../services/landAssignmentService'
 import {
   archiveLand,
-  calculateLandSummary,
   createLand,
   getLands,
   restoreLand,
   updateLand,
 } from '../services/landService'
+import type { Crop } from '../types/crop'
 import type {
   CreateLandInput,
   Land,
   LandOwnershipType,
   LandStatus,
 } from '../types/land'
+import type { Farmer } from '../types/farmer'
+import type { LandAssignment } from '../types/landAssignment'
 
-type OwnershipFilter = 'all' | LandOwnershipType
-type StatusFilter = 'all' | LandStatus
+type OwnershipFilter =
+  | 'all'
+  | LandOwnershipType
+
+type StatusFilter =
+  | 'all'
+  | LandStatus
+
+type LandActivity = {
+  assignmentCount: number
+  assignedAcres: number
+  cropCount: number
+  cropAcres: number
+  assignedBalanceAcres: number
+  unassignedAcres: number
+  farmerNames: string[]
+  cropNames: string[]
+}
+
+const emptyActivity: LandActivity = {
+  assignmentCount: 0,
+  assignedAcres: 0,
+  cropCount: 0,
+  cropAcres: 0,
+  assignedBalanceAcres: 0,
+  unassignedAcres: 0,
+  farmerNames: [],
+  cropNames: [],
+}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-PK', {
@@ -44,41 +81,78 @@ function formatAcres(value: number) {
 function LandsPage() {
   const { activeWorkspace } = useAuth()
 
-  const [lands, setLands] = useState<Land[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [ownershipFilter, setOwnershipFilter] =
-    useState<OwnershipFilter>('all')
+  const [lands, setLands] = useState<
+    Land[]
+  >([])
+  const [farmers, setFarmers] = useState<
+    Farmer[]
+  >([])
+  const [assignments, setAssignments] =
+    useState<LandAssignment[]>([])
+  const [crops, setCrops] = useState<
+    Crop[]
+  >([])
+
+  const [searchTerm, setSearchTerm] =
+    useState('')
+  const [
+    ownershipFilter,
+    setOwnershipFilter,
+  ] = useState<OwnershipFilter>('all')
   const [statusFilter, setStatusFilter] =
     useState<StatusFilter>('active')
 
-  const [isFormOpen, setIsFormOpen] = useState(false)
-  const [editingLand, setEditingLand] = useState<Land | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [pageError, setPageError] = useState('')
+  const [isFormOpen, setIsFormOpen] =
+    useState(false)
+  const [editingLand, setEditingLand] =
+    useState<Land | null>(null)
+  const [isLoading, setIsLoading] =
+    useState(true)
+  const [pageError, setPageError] =
+    useState('')
 
   const organizationId =
     activeWorkspace?.organization.id ?? ''
 
-  const loadLands = async () => {
+  const loadPageData = async () => {
     try {
       setIsLoading(true)
       setPageError('')
 
-      /*
-       * During development, records created before workspace support
-       * may not contain organizationId. When no active workspace is
-       * available, getLands() safely loads the existing records.
-       */
-      const records = organizationId
-        ? await getLands(organizationId)
-        : await getLands()
+      const [
+        landRecords,
+        farmerRecords,
+        assignmentRecords,
+        cropRecords,
+      ] = await Promise.all([
+        organizationId
+          ? getLands(organizationId)
+          : getLands(),
+        organizationId
+          ? getFarmers(organizationId)
+          : getFarmers(),
+        organizationId
+          ? getLandAssignments(
+              organizationId,
+            )
+          : getLandAssignments(),
+        organizationId
+          ? getCrops(organizationId)
+          : getCrops(),
+      ])
 
-      setLands(records)
+      setLands(landRecords)
+      setFarmers(farmerRecords)
+      setAssignments(assignmentRecords)
+      setCrops(cropRecords)
     } catch (error) {
-      console.error('Unable to load lands:', error)
+      console.error(
+        'Unable to load current land activity:',
+        error,
+      )
 
       setPageError(
-        'Unable to load land records. Please check the Firestore database and security rules.',
+        'Unable to load land records and current activity.',
       )
     } finally {
       setIsLoading(false)
@@ -86,20 +160,196 @@ function LandsPage() {
   }
 
   useEffect(() => {
-    void loadLands()
+    void loadPageData()
   }, [organizationId])
 
-  const summary = useMemo(
-    () => calculateLandSummary(lands),
-    [lands],
+  const farmerById = useMemo(
+    () =>
+      new Map(
+        farmers.map((farmer) => [
+          farmer.id,
+          farmer,
+        ]),
+      ),
+    [farmers],
+  )
+
+  const activityByLand = useMemo(() => {
+    const activityMap = new Map<
+      string,
+      {
+        assignmentCount: number
+        assignedAcres: number
+        cropCount: number
+        cropAcres: number
+        farmerNames: Set<string>
+        cropNames: Set<string>
+      }
+    >()
+
+    assignments
+      .filter(
+        (assignment) =>
+          assignment.status === 'active',
+      )
+      .forEach((assignment) => {
+        const current =
+          activityMap.get(
+            assignment.landId,
+          ) ?? {
+            assignmentCount: 0,
+            assignedAcres: 0,
+            cropCount: 0,
+            cropAcres: 0,
+            farmerNames: new Set<string>(),
+            cropNames: new Set<string>(),
+          }
+
+        current.assignmentCount += 1
+        current.assignedAcres +=
+          assignment.assignedAcres
+
+        const farmer = farmerById.get(
+          assignment.farmerId,
+        )
+
+        if (farmer?.farmerName) {
+          current.farmerNames.add(
+            farmer.farmerName,
+          )
+        }
+
+        activityMap.set(
+          assignment.landId,
+          current,
+        )
+      })
+
+    crops
+      .filter(
+        (crop) =>
+          crop.status === 'planned' ||
+          crop.status === 'active',
+      )
+      .forEach((crop) => {
+        const current =
+          activityMap.get(crop.landId) ?? {
+            assignmentCount: 0,
+            assignedAcres: 0,
+            cropCount: 0,
+            cropAcres: 0,
+            farmerNames: new Set<string>(),
+            cropNames: new Set<string>(),
+          }
+
+        current.cropCount += 1
+        current.cropAcres += crop.areaAcres
+
+        if (crop.cropName) {
+          current.cropNames.add(
+            crop.cropName,
+          )
+        }
+
+        activityMap.set(
+          crop.landId,
+          current,
+        )
+      })
+
+    return new Map(
+      lands.map((land) => {
+        const current =
+          activityMap.get(land.id)
+
+        const assignedAcres =
+          current?.assignedAcres ?? 0
+        const cropAcres =
+          current?.cropAcres ?? 0
+
+        return [
+          land.id,
+          {
+            assignmentCount:
+              current?.assignmentCount ?? 0,
+            assignedAcres,
+            cropCount:
+              current?.cropCount ?? 0,
+            cropAcres,
+            assignedBalanceAcres: Math.max(
+              assignedAcres - cropAcres,
+              0,
+            ),
+            unassignedAcres: Math.max(
+              land.totalAcres -
+                assignedAcres,
+              0,
+            ),
+            farmerNames: Array.from(
+              current?.farmerNames ?? [],
+            ),
+            cropNames: Array.from(
+              current?.cropNames ?? [],
+            ),
+          } satisfies LandActivity,
+        ]
+      }),
+    )
+  }, [
+    assignments,
+    crops,
+    farmerById,
+    lands,
+    ])
+
+  const currentTotals = useMemo(
+    () =>
+      lands
+        .filter(
+          (land) =>
+            land.status === 'active',
+        )
+        .reduce(
+          (totals, land) => {
+            const activity =
+              activityByLand.get(
+                land.id,
+              ) ?? emptyActivity
+
+            return {
+              totalLandAcres:
+                totals.totalLandAcres +
+                land.totalAcres,
+              assignedAcres:
+                totals.assignedAcres +
+                activity.assignedAcres,
+              cropAcres:
+                totals.cropAcres +
+                activity.cropAcres,
+              unassignedAcres:
+                totals.unassignedAcres +
+                activity.unassignedAcres,
+            }
+          },
+          {
+            totalLandAcres: 0,
+            assignedAcres: 0,
+            cropAcres: 0,
+            unassignedAcres: 0,
+          },
+        ),
+    [activityByLand, lands],
   )
 
   const filteredLands = useMemo(() => {
-    const normalizedSearch = searchTerm
-      .trim()
-      .toLowerCase()
+    const normalizedSearch =
+      searchTerm.trim().toLowerCase()
 
     return lands.filter((land) => {
+      const activity =
+        activityByLand.get(land.id) ??
+        emptyActivity
+
       const matchesSearch =
         !normalizedSearch ||
         [
@@ -107,6 +357,8 @@ function LandsPage() {
           land.location,
           land.landCode,
           land.soilType,
+          ...activity.farmerNames,
+          ...activity.cropNames,
         ].some((value) =>
           value
             .toLowerCase()
@@ -115,7 +367,8 @@ function LandsPage() {
 
       const matchesOwnership =
         ownershipFilter === 'all' ||
-        land.ownership === ownershipFilter
+        land.ownership ===
+          ownershipFilter
 
       const matchesStatus =
         statusFilter === 'all' ||
@@ -128,40 +381,57 @@ function LandsPage() {
       )
     })
   }, [
+    activityByLand,
     lands,
-    searchTerm,
     ownershipFilter,
+    searchTerm,
     statusFilter,
   ])
 
   const landSummary = [
     {
-      title: 'Total Land Sites',
-      value: summary.totalLandSites.toLocaleString(),
-      description: 'Active land locations',
-      icon: Map,
-      style: 'bg-sky-100 text-sky-700',
+      title: 'Total Active Land',
+      value: formatAcres(
+        currentTotals.totalLandAcres,
+      ),
+      description:
+        'Owned and leased active land',
+      icon: MapIcon,
+      style:
+        'bg-sky-100 text-sky-700',
     },
     {
-      title: 'Total Land',
-      value: formatAcres(summary.totalLandAcres),
-      description: 'Owned and leased land',
-      icon: Map,
-      style: 'bg-emerald-100 text-emerald-700',
-    },
-    {
-      title: 'Owned Land',
-      value: formatAcres(summary.ownedLandAcres),
-      description: 'Total active owned land',
+      title: 'Assigned Land',
+      value: formatAcres(
+        currentTotals.assignedAcres,
+      ),
+      description:
+        'Currently assigned to farmers',
       icon: Building2,
-      style: 'bg-lime-100 text-lime-700',
+      style:
+        'bg-indigo-100 text-indigo-700',
     },
     {
-      title: 'Leased Land',
-      value: formatAcres(summary.leasedLandAcres),
-      description: 'Total active leased land',
-      icon: Building2,
-      style: 'bg-violet-100 text-violet-700',
+      title: 'Current Crop Acres',
+      value: formatAcres(
+        currentTotals.cropAcres,
+      ),
+      description:
+        'Planned and active crops',
+      icon: Sprout,
+      style:
+        'bg-amber-100 text-amber-700',
+    },
+    {
+      title: 'Unassigned Land',
+      value: formatAcres(
+        currentTotals.unassignedAcres,
+      ),
+      description:
+        'Not assigned to any farmer',
+      icon: MapIcon,
+      style:
+        'bg-emerald-100 text-emerald-700',
     },
   ]
 
@@ -183,10 +453,11 @@ function LandsPage() {
   const handleFormSubmit = async (
     input: CreateLandInput,
   ) => {
-    const inputWithWorkspace: CreateLandInput = {
-      ...input,
-      organizationId,
-    }
+    const inputWithWorkspace: CreateLandInput =
+      {
+        ...input,
+        organizationId,
+      }
 
     if (editingLand) {
       await updateLand(
@@ -194,20 +465,33 @@ function LandsPage() {
         inputWithWorkspace,
       )
     } else {
-      await createLand(inputWithWorkspace)
+      await createLand(
+        inputWithWorkspace,
+      )
     }
 
-    await loadLands()
+    await loadPageData()
   }
 
-  const handleArchive = async (land: Land) => {
-    const landLabel =
-      land.landName ||
-      land.location ||
-      land.landCode
+  const handleArchive = async (
+    land: Land,
+  ) => {
+    const activity =
+      activityByLand.get(land.id) ??
+      emptyActivity
+
+    if (
+      activity.assignmentCount > 0 ||
+      activity.cropCount > 0
+    ) {
+      setPageError(
+        `${land.landName} cannot be archived while active land assignments or crops remain.`,
+      )
+      return
+    }
 
     const confirmed = window.confirm(
-      `Archive "${landLabel}"?\n\nThe land will be hidden from active records, but its historical data will remain preserved.`,
+      `Archive "${land.landName}"?`,
     )
 
     if (!confirmed) {
@@ -217,21 +501,33 @@ function LandsPage() {
     try {
       setPageError('')
       await archiveLand(land.id)
-      await loadLands()
+      await loadPageData()
     } catch (error) {
-      console.error('Unable to archive land:', error)
-      setPageError('Unable to archive the land record.')
+      console.error(
+        'Unable to archive land:',
+        error,
+      )
+      setPageError(
+        'Unable to archive the land record.',
+      )
     }
   }
 
-  const handleRestore = async (land: Land) => {
+  const handleRestore = async (
+    land: Land,
+  ) => {
     try {
       setPageError('')
       await restoreLand(land.id)
-      await loadLands()
+      await loadPageData()
     } catch (error) {
-      console.error('Unable to restore land:', error)
-      setPageError('Unable to restore the land record.')
+      console.error(
+        'Unable to restore land:',
+        error,
+      )
+      setPageError(
+        'Unable to restore the land record.',
+      )
     }
   }
 
@@ -249,7 +545,8 @@ function LandsPage() {
             </h1>
 
             <p className="mt-2 text-slate-500">
-              Manage owned and leased agricultural land records.
+              View current land assignments,
+              crops and available acreage.
             </p>
           </div>
 
@@ -274,7 +571,7 @@ function LandsPage() {
             const Icon = item.icon
 
             return (
-              <div
+              <article
                 key={item.title}
                 className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
               >
@@ -295,22 +592,25 @@ function LandsPage() {
                 <p className="mt-2 text-xs leading-5 text-slate-400">
                   {item.description}
                 </p>
-              </div>
+              </article>
             )
           })}
         </section>
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 p-5">
+          <header className="border-b border-slate-200 p-5">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">
-                  Land Records
+                  Current Land Records
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  {filteredLands.length} displayed record
-                  {filteredLands.length === 1 ? '' : 's'}
+                  {filteredLands.length}{' '}
+                  displayed record
+                  {filteredLands.length === 1
+                    ? ''
+                    : 's'}
                 </p>
               </div>
 
@@ -322,9 +622,11 @@ function LandsPage() {
                     type="search"
                     value={searchTerm}
                     onChange={(event) =>
-                      setSearchTerm(event.target.value)
+                      setSearchTerm(
+                        event.target.value,
+                      )
                     }
-                    placeholder="Search name or location..."
+                    placeholder="Search lands, farmers or crops..."
                     className="w-full border-0 bg-transparent text-sm outline-none placeholder:text-slate-400"
                   />
                 </div>
@@ -333,7 +635,8 @@ function LandsPage() {
                   value={ownershipFilter}
                   onChange={(event) =>
                     setOwnershipFilter(
-                      event.target.value as OwnershipFilter,
+                      event.target
+                        .value as OwnershipFilter,
                     )
                   }
                   className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
@@ -341,20 +644,27 @@ function LandsPage() {
                   <option value="all">
                     All Ownership
                   </option>
-                  <option value="owned">Owned</option>
-                  <option value="leased">Leased</option>
+                  <option value="owned">
+                    Owned
+                  </option>
+                  <option value="leased">
+                    Leased
+                  </option>
                 </select>
 
                 <select
                   value={statusFilter}
                   onChange={(event) =>
                     setStatusFilter(
-                      event.target.value as StatusFilter,
+                      event.target
+                        .value as StatusFilter,
                     )
                   }
                   className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
                 >
-                  <option value="active">Active</option>
+                  <option value="active">
+                    Active
+                  </option>
                   <option value="archived">
                     Archived
                   </option>
@@ -364,7 +674,7 @@ function LandsPage() {
                 </select>
               </div>
             </div>
-          </div>
+          </header>
 
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200">
@@ -372,10 +682,11 @@ function LandsPage() {
                 <tr>
                   {[
                     'Land',
-                    'Location',
-                    'Area',
                     'Ownership',
-                    'Annual Lease',
+                    'Total Area',
+                    'Active Assignments',
+                    'Current Crops',
+                    'Current Allocation',
                     'Status',
                     'Actions',
                   ].map((heading) => (
@@ -393,24 +704,25 @@ function LandsPage() {
                 {isLoading ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-5 py-16 text-center"
                     >
                       <LoaderCircle className="mx-auto h-7 w-7 animate-spin text-emerald-700" />
-
                       <p className="mt-3 text-sm text-slate-500">
-                        Loading land records...
+                        Loading current land
+                        activity...
                       </p>
                     </td>
                   </tr>
-                ) : filteredLands.length === 0 ? (
+                ) : filteredLands.length ===
+                  0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-5 py-16 text-center"
                     >
                       <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
-                        <Map className="h-7 w-7" />
+                        <MapIcon className="h-7 w-7" />
                       </div>
 
                       <h3 className="mt-4 font-bold text-slate-900">
@@ -427,112 +739,219 @@ function LandsPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredLands.map((land) => {
-                    const landLabel =
-                      land.landName ||
-                      land.location ||
-                      land.landCode
+                  filteredLands.map(
+                    (land) => {
+                      const activity =
+                        activityByLand.get(
+                          land.id,
+                        ) ?? emptyActivity
 
-                    return (
-                      <tr
-                        key={land.id}
-                        className="transition hover:bg-slate-50"
-                      >
-                        <td className="px-5 py-4">
-                          <p className="font-semibold text-slate-900">
-                            {landLabel}
-                          </p>
+                      const landLabel =
+                        land.landName ||
+                        land.location ||
+                        land.landCode
 
-                          {land.soilType && (
-                            <p className="mt-1 text-xs text-slate-400">
-                              {land.soilType}
+                      return (
+                        <tr
+                          key={land.id}
+                          className="transition hover:bg-slate-50"
+                        >
+                          <td className="px-5 py-4">
+                            <p className="font-bold text-slate-900">
+                              {landLabel}
                             </p>
-                          )}
-                        </td>
+                            <p className="mt-1 text-xs font-semibold text-emerald-700">
+                              {land.landCode}
+                            </p>
+                            <p className="mt-1 max-w-44 truncate text-xs text-slate-400">
+                              {land.location ||
+                                'No location'}
+                            </p>
+                          </td>
 
-                        <td className="px-5 py-4 text-sm text-slate-600">
-                          {land.location || '—'}
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4 text-sm font-semibold text-slate-900">
-                          {formatAcres(land.totalAcres)}
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4">
-                          <span
-                            className={[
-                              'inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize',
-                              land.ownership === 'owned'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-violet-100 text-violet-700',
-                            ].join(' ')}
-                          >
-                            {land.ownership}
-                          </span>
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">
-                          {land.ownership === 'leased'
-                            ? formatCurrency(
-                                land.annualLeaseAmount,
-                              )
-                            : '—'}
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4">
-                          <span
-                            className={[
-                              'inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize',
-                              land.status === 'active'
-                                ? 'bg-sky-100 text-sky-700'
-                                : 'bg-slate-200 text-slate-600',
-                            ].join(' ')}
-                          >
-                            {land.status}
-                          </span>
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              aria-label={`Edit ${landLabel}`}
-                              onClick={() =>
-                                openEditForm(land)
-                              }
-                              className="rounded-lg p-2 text-sky-700 transition hover:bg-sky-50"
+                          <td className="whitespace-nowrap px-5 py-4">
+                            <span
+                              className={[
+                                'inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize',
+                                land.ownership ===
+                                'owned'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-violet-100 text-violet-700',
+                              ].join(' ')}
                             >
-                              <Pencil className="h-4 w-4" />
-                            </button>
+                              {land.ownership}
+                            </span>
 
-                            {land.status === 'active' ? (
-                              <button
-                                type="button"
-                                aria-label={`Archive ${landLabel}`}
-                                onClick={() =>
-                                  void handleArchive(land)
-                                }
-                                className="rounded-lg p-2 text-amber-700 transition hover:bg-amber-50"
-                              >
-                                <Archive className="h-4 w-4" />
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                aria-label={`Restore ${landLabel}`}
-                                onClick={() =>
-                                  void handleRestore(land)
-                                }
-                                className="rounded-lg p-2 text-emerald-700 transition hover:bg-emerald-50"
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                              </button>
+                            {land.ownership ===
+                              'leased' && (
+                              <p className="mt-2 text-xs text-slate-500">
+                                {formatCurrency(
+                                  land.annualLeaseAmount,
+                                )}{' '}
+                                yearly
+                              </p>
                             )}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })
+                          </td>
+
+                          <td className="whitespace-nowrap px-5 py-4 font-bold text-slate-900">
+                            {formatAcres(
+                              land.totalAcres,
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            {activity.assignmentCount >
+                            0 ? (
+                              <>
+                                <p className="font-bold text-slate-900">
+                                  {formatAcres(
+                                    activity.assignedAcres,
+                                  )}
+                                </p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {
+                                    activity.assignmentCount
+                                  }{' '}
+                                  active assignment
+                                  {activity.assignmentCount ===
+                                  1
+                                    ? ''
+                                    : 's'}
+                                </p>
+                                <div className="mt-2 flex max-w-52 flex-wrap gap-1">
+                                  {activity.farmerNames.map(
+                                    (name) => (
+                                      <span
+                                        key={name}
+                                        className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-700"
+                                      >
+                                        {name}
+                                      </span>
+                                    ),
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-sm text-slate-400">
+                                No active assignment
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            {activity.cropCount >
+                            0 ? (
+                              <>
+                                <p className="font-bold text-amber-700">
+                                  {formatAcres(
+                                    activity.cropAcres,
+                                  )}
+                                </p>
+                                <div className="mt-2 flex max-w-52 flex-wrap gap-1">
+                                  {activity.cropNames.map(
+                                    (name) => (
+                                      <span
+                                        key={name}
+                                        className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700"
+                                      >
+                                        {name}
+                                      </span>
+                                    ),
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-sm text-slate-400">
+                                No current crop
+                              </span>
+                            )}
+                          </td>
+
+                        <td className="whitespace-nowrap px-5 py-4 text-sm">
+  {activity.assignmentCount > 0 ? (
+    <p className="font-semibold text-emerald-700">
+      {formatAcres(
+        activity.assignedBalanceAcres,
+      )}{' '}
+      not yet planted
+    </p>
+  ) : (
+    <p className="font-semibold text-slate-500">
+      Not yet assigned
+    </p>
+  )}
+
+  <p className="mt-2 text-slate-500">
+    {formatAcres(
+      activity.unassignedAcres,
+    )}{' '}
+    unassigned
+  </p>
+</td>
+
+                          <td className="whitespace-nowrap px-5 py-4">
+                            <span
+                              className={[
+                                'inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize',
+                                land.status ===
+                                'active'
+                                  ? 'bg-sky-100 text-sky-700'
+                                  : 'bg-slate-200 text-slate-600',
+                              ].join(' ')}
+                            >
+                              {land.status}
+                            </span>
+                          </td>
+
+                          <td className="whitespace-nowrap px-5 py-4">
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                aria-label={`Edit ${landLabel}`}
+                                onClick={() =>
+                                  openEditForm(
+                                    land,
+                                  )
+                                }
+                                className="rounded-lg p-2 text-sky-700 transition hover:bg-sky-50"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+
+                              {land.status ===
+                              'active' ? (
+                                <button
+                                  type="button"
+                                  aria-label={`Archive ${landLabel}`}
+                                  onClick={() =>
+                                    void handleArchive(
+                                      land,
+                                    )
+                                  }
+                                  className="rounded-lg p-2 text-amber-700 transition hover:bg-amber-50"
+                                >
+                                  <Archive className="h-4 w-4" />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  aria-label={`Restore ${landLabel}`}
+                                  onClick={() =>
+                                    void handleRestore(
+                                      land,
+                                    )
+                                  }
+                                  className="rounded-lg p-2 text-emerald-700 transition hover:bg-emerald-50"
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    },
+                  )
                 )}
               </tbody>
             </table>
