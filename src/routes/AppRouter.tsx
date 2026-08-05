@@ -15,6 +15,7 @@ import LandsPage from '../pages/LandsPage'
 import LoginPage from '../pages/LoginPage'
 import ProfileSetupPage from '../pages/ProfileSetupPage'
 import RegisterPage from '../pages/RegisterPage'
+import SuppliersPage from '../pages/SuppliersPage'
 
 function AppRouter() {
   return (
@@ -64,6 +65,10 @@ function AppRouter() {
         <Route
           path="/crops"
           element={<CropsPage />}
+        />
+        <Route
+          path="/suppliers"
+          element={<SuppliersPage />}
         />
       </Route>
 
