@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase/firestore'
+import type { LandOwnershipType } from './land'
 
 export type CropStatus =
   | 'planned'
@@ -7,8 +8,8 @@ export type CropStatus =
   | 'closed'
 
 export type CropShareType =
+  | 'shared'
   | 'owner_only'
-  | 'shared_with_farmer'
 
 export type CropSeason =
   | 'kharif'
@@ -18,31 +19,62 @@ export type CropSeason =
 
 export type Crop = {
   id: string
+  organizationId: string
+  cropCode: string
+
   cropName: string
+  season: CropSeason
+  status: CropStatus
+
+  landAssignmentId: string
   landId: string
   farmerId: string
   areaAcres: number
+
+  landOwnershipType: LandOwnershipType
+  cropShareType: CropShareType
+  ownerSharePercentage: number
+  farmerSharePercentage: number
+
   sowingDate: string
   expectedHarvestDate: string
   actualHarvestDate: string
-  season: CropSeason
-  shareType: CropShareType
-  status: CropStatus
   notes: string
+
   createdAt: Timestamp | null
   updatedAt: Timestamp | null
 }
 
 export type CreateCropInput = {
+  organizationId: string
+
   cropName: string
+  season: CropSeason
+  status: CropStatus
+
+  landAssignmentId: string
   landId: string
   farmerId: string
   areaAcres: number
+
+  landOwnershipType: LandOwnershipType
+  cropShareType: CropShareType
+  ownerSharePercentage: number
+  farmerSharePercentage: number
+
   sowingDate: string
   expectedHarvestDate: string
   actualHarvestDate: string
-  season: CropSeason
-  shareType: CropShareType
-  status: CropStatus
   notes: string
+}
+
+export type UpdateCropInput = CreateCropInput
+
+export type CropSummary = {
+  totalCrops: number
+  plannedCrops: number
+  activeCrops: number
+  harvestedCrops: number
+  closedCrops: number
+  totalCropAcres: number
 }
