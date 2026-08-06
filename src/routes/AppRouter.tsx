@@ -14,6 +14,7 @@ import LandDetailsPage from '../pages/LandDetailsPage'
 import LandsPage from '../pages/LandsPage'
 import LoginPage from '../pages/LoginPage'
 import ProfileSetupPage from '../pages/ProfileSetupPage'
+import PurchasesPage from '../pages/PurchasesPage'
 import RegisterPage from '../pages/RegisterPage'
 import SuppliersPage from '../pages/SuppliersPage'
 
@@ -69,6 +70,10 @@ function AppRouter() {
         <Route
           path="/suppliers"
           element={<SuppliersPage />}
+        />
+        <Route
+          path="/purchases"
+          element={<PurchasesPage />}
         />
       </Route>
 
